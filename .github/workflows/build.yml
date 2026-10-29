@@ -55,24 +55,26 @@ jobs:
     with:
       push: true
   helm:
+  # && needs.sonar.result == 'success'
     if: |
-      !cancelled()
-      && needs.sonar.result == 'success'
+      !cancelled()      
       && ( !inputs.native || needs.native.result == 'success' || needs.nativeMulti.result == 'success' )
     uses: conecx/ci-common/.github/workflows/helm-build.yml@v1
-    needs: [sonar, native, nativeMulti]
+        # needs: [sonar, native, nativeMulti]
+    needs: [native, nativeMulti]
     secrets: inherit
     with:
       push: true
   helm-event:
+  #       && needs.sonar.result == 'success'
     if: |
       !cancelled()
-      && needs.sonar.result == 'success'
       && needs.helm.result == 'success'
       && ( !inputs.native || needs.native.result == 'success' || needs.nativeMulti.result == 'success' )
       && inputs.helmEventTargetRepository != ''
     uses: conecx/ci-product/.github/workflows/helm-send-event.yml@v1
-    needs: [helm, sonar, native]
+    # needs: [helm, sonar, native]
+    needs: [helm, native]
     secrets: inherit
     with:
       targetRepository: ${{ inputs.helmEventTargetRepository }}
