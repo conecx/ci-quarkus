@@ -1,0 +1,79 @@
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      native:
+        description: 'Build native image'
+        default: false
+        required: false
+        type: boolean
+      nativeMulti:
+        description: 'Build multiple architectures x84, arm4, ... native image'
+        default: true
+        required: false
+        type: boolean
+      helmEventTargetRepository:
+        description: 'Target repository'
+        default: ''
+        required: false
+        type: string
+      helmEventTargetBranch:
+        description: 'Target branch'
+        default: 'main'
+        required: false
+        type: string
+
+jobs:
+  # codeql:
+  #   uses: conecx/ci-quarkus/.github/workflows/quarkus-codeql.yml@v2
+  #   secrets: inherit
+  liquibase:
+    uses: conecx/ci-quarkus/.github/workflows/quarkus-liquibase.yml@v2
+    secrets: inherit    
+  quarkus:
+    uses: conecx/ci-quarkus/.github/workflows/quarkus-build.yml@v2
+    secrets: inherit
+    with:
+      push: true
+  # sonar:
+  #   uses: conecx/ci-quarkus/.github/workflows/quarkus-sonar.yml@v2
+  #   needs: [quarkus, liquibase]
+  #   secrets: inherit
+  native:
+    if: ${{ inputs.native && !inputs.nativeMulti }}
+    uses: conecx/ci-quarkus/.github/workflows/quarkus-build-native.yml@v2
+    secrets: inherit
+    needs: [quarkus, liquibase]
+    with:
+      push: true
+  nativeMulti:
+    if: ${{ inputs.native && inputs.nativeMulti }}
+    uses: conecx/ci-quarkus/.github/workflows/quarkus-build-native-multi.yml@v2
+    secrets: inherit
+    needs: [quarkus, liquibase]
+    with:
+      push: true
+  helm:
+    if: |
+      !cancelled()
+      && needs.sonar.result == 'success'
+      && ( !inputs.native || needs.native.result == 'success' || needs.nativeMulti.result == 'success' )
+    uses: conecx/ci-common/.github/workflows/helm-build.yml@v1
+    needs: [sonar, native, nativeMulti]
+    secrets: inherit
+    with:
+      push: true
+  helm-event:
+    if: |
+      !cancelled()
+      && needs.sonar.result == 'success'
+      && needs.helm.result == 'success'
+      && ( !inputs.native || needs.native.result == 'success' || needs.nativeMulti.result == 'success' )
+      && inputs.helmEventTargetRepository != ''
+    uses: conecx/ci-product/.github/workflows/helm-send-event.yml@v1
+    needs: [helm, sonar, native]
+    secrets: inherit
+    with:
+      targetRepository: ${{ inputs.helmEventTargetRepository }}
+      targetBranch: ${{ inputs.helmEventTargetBranch }}

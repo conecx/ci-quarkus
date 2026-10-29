@@ -1,0 +1,58 @@
+name: release
+
+on:
+  workflow_call:
+    inputs:
+      native:
+        description: 'Release native image'
+        default: false
+        required: false
+        type: boolean
+      helmEventTargetRepository:
+        description: 'Target repository'
+        default: ''
+        required: false
+        type: string
+      helmEventTargetBranch:
+        description: 'Target branch'
+        default: 'main'
+        required: false
+        type: string
+        
+jobs:
+  docker:
+    uses: conecx/ci-common/.github/workflows/docker-release.yml@v1
+    secrets: inherit
+  native:
+    if: ${{ inputs.native }}
+    uses: conecx/ci-common/.github/workflows/docker-release.yml@v1
+    secrets: inherit
+    with:
+      releaseImageTag: '{{ .Version }}-native'
+      tags: '{{ .Release }}-native'
+  helm:
+    if: |
+      !cancelled()
+      && needs.docker.result == 'success'
+      && ( !inputs.native || needs.native.result == 'success')     
+    uses: conecx/ci-common/.github/workflows/helm-release.yml@v1
+    needs: [docker, native]
+    secrets: inherit
+  helm-event:
+    if: |
+      !cancelled()
+      && needs.helm.result == 'success'
+      && inputs.helmEventTargetRepository != ''
+    uses: conecx/ci-product/.github/workflows/helm-send-event.yml@v1
+    needs: [helm]
+    secrets: inherit
+    with:
+      targetRepository: ${{ inputs.helmEventTargetRepository }}
+      targetBranch: ${{ inputs.helmEventTargetBranch }}
+  changelog:
+    if: |
+      !cancelled()
+      && needs.helm.result == 'success'  
+    uses: conecx/ci-common/.github/workflows/generate-changelog.yml@v1
+    needs: [helm]
+    secrets: inherit

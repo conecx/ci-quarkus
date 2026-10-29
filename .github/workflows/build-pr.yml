@@ -1,0 +1,54 @@
+name: pr
+
+on:
+  workflow_call:
+    inputs:
+      native:
+        description: 'Build native image'
+        default: false
+        required: false
+        type: boolean
+      nativeMulti:
+        description: 'Build multiple architectures x84, arm4, ... native image'
+        default: true
+        required: false
+        type: boolean
+
+jobs:
+  # dependency-review:
+  #   uses: conecx/ci-common/.github/workflows/dependency-review.yml@v1
+  #   secrets: inherit
+  # code-ql:
+  #   uses: conecx/ci-quarkus/.github/workflows/quarkus-codeql.yml@v2
+  #   secrets: inherit
+  quarkus:
+    uses: conecx/ci-quarkus/.github/workflows/quarkus-build.yml@v2
+    secrets: inherit
+    with:
+      platform: ''
+  liquibase:
+    uses: conecx/ci-quarkus/.github/workflows/quarkus-liquibase.yml@v2
+    secrets: inherit
+  native:
+    if: ${{ inputs.native && !inputs.nativeMulti }}
+    uses: conecx/ci-quarkus/.github/workflows/quarkus-build-native.yml@v2
+    secrets: inherit
+    needs: [quarkus, liquibase]
+    with:
+      args: '-Ob'  # enable quick build mode
+  nativeMulti:
+    if: ${{ inputs.native && inputs.nativeMulti }}
+    uses: conecx/ci-quarkus/.github/workflows/quarkus-build-native-multi.yml@v2
+    secrets: inherit
+    needs: [quarkus, liquibase]
+    with:
+      args: '-Ob' # enable quick build mode
+  helm:
+    if: |
+      !cancelled()
+      && needs.quarkus.result == 'success'
+      && needs.liquibase.result == 'success'
+      && ( !inputs.native || needs.native.result == 'success' || needs.nativeMulti.result == 'success' )
+    uses: conecx/ci-common/.github/workflows/helm-build.yml@v1
+    needs: [quarkus, native, nativeMulti]
+    secrets: inherit
